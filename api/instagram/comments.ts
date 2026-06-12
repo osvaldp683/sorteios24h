@@ -55,7 +55,7 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(
       JSON.stringify({
         error: 'RAPIDAPI_KEY não configurada',
-        hint: 'Configure a variável de ambiente RAPIDAPI_KEY no Vercel com sua chave do RapidAPI (instagram-scraper-api2)',
+        hint: 'Configure a variável de ambiente RAPIDAPI_KEY no Vercel com sua chave do RapidAPI (instagram-scraper21)',
       }),
       { status: 503, headers }
     );
@@ -93,7 +93,7 @@ export default async function handler(req: Request): Promise<Response> {
     const MAX_PAGES = Math.ceil(maxComments / 12); // ~12 comments per page
 
     do {
-      const apiUrl = new URL('https://instagram-scraper-api2.p.rapidapi.com/v1/comments');
+      const apiUrl = new URL('https://instagram-scraper21.p.rapidapi.com/v1/comments');
       apiUrl.searchParams.set('code_or_id_or_url', decodeURIComponent(codeOrUrl));
       if (nextMinId) {
         apiUrl.searchParams.set('min_id', nextMinId);
@@ -103,7 +103,7 @@ export default async function handler(req: Request): Promise<Response> {
         method: 'GET',
         headers: {
           'x-rapidapi-key': apiKey,
-          'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com',
+          'x-rapidapi-host': 'instagram-scraper21.p.rapidapi.com',
         },
       });
 
@@ -115,7 +115,7 @@ export default async function handler(req: Request): Promise<Response> {
             return new Response(
               JSON.stringify({
                 error: 'Chave da API inválida ou sem permissão',
-                hint: 'Verifique sua RAPIDAPI_KEY e se está inscrito na API instagram-scraper-api2',
+                hint: 'Verifique sua RAPIDAPI_KEY e se está inscrito na API instagram-scraper21',
               }),
               { status: 403, headers }
             );

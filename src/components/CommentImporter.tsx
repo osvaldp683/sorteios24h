@@ -336,7 +336,7 @@ const CommentImporter: React.FC<CommentImporterProps> = ({ onParticipantsChange,
               </div>
               <div className="space-y-1.5 text-[11px] text-white/40">
                 <p className="font-semibold text-white/60">Como configurar:</p>
-                <p>1. Acesse <span className="text-yellow-300">rapidapi.com</span> e busque por <span className="text-white/70">"instagram-scraper-api2"</span></p>
+                <p>1. Acesse <span className="text-yellow-300">rapidapi.com</span> e busque por <span className="text-white/70">"instagram-scraper21"</span></p>
                 <p>2. Inscreva-se (plano gratuito disponível)</p>
                 <p>3. Copie sua API Key</p>
                 <p>4. No Vercel: Settings → Environment Variables → <span className="text-yellow-300">RAPIDAPI_KEY</span></p>
