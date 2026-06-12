@@ -8,6 +8,17 @@ export const config = {
   runtime: 'edge',
 };
 
+// Converte o shortcode do Instagram para o ID numérico exigido pela nova API
+function shortcodeToMediaId(shortcode: string): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  let id = BigInt(0);
+  for (let i = 0; i < shortcode.length; i++) {
+    const char = shortcode[i];
+    id = (id * BigInt(64)) + BigInt(alphabet.indexOf(char));
+  }
+  return id.toString();
+}
+
 export default async function handler(req: Request): Promise<Response> {
   const headers = {
     'Content-Type': 'application/json',
@@ -59,16 +70,25 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const shortcode = shortcodeMatch[2];
+  let mediaId: string;
+  try {
+    mediaId = shortcodeToMediaId(shortcode);
+  } catch (e) {
+    return new Response(
+      JSON.stringify({ error: 'Falha ao converter a URL para Media ID interno do Instagram.' }),
+      { status: 400, headers }
+    );
+  }
 
   try {
     const allComments: { username: string; text: string; id: string }[] = [];
     let nextCursor: string | null = startCursor || null;
 
-    const apiUrl = new URL('https://instagram-scraper-stable-api.p.rapidapi.com/get_post_comments.php');
-    apiUrl.searchParams.set('media_code', shortcode);
-    apiUrl.searchParams.set('sort_order', 'recent');
+    const apiUrl = new URL('https://instagram-api-fast-reliable-data-scraper.p.rapidapi.com/comments');
+    apiUrl.searchParams.set('id', mediaId);
+    
     if (nextCursor) {
-      apiUrl.searchParams.set('pagination_token', nextCursor);
+      apiUrl.searchParams.set('min_id', nextCursor);
     }
 
     const response = await fetch(apiUrl.toString(), {
@@ -76,7 +96,7 @@ export default async function handler(req: Request): Promise<Response> {
       headers: {
         'Content-Type': 'application/json',
         'x-rapidapi-key': apiKey,
-        'x-rapidapi-host': 'instagram-scraper-stable-api.p.rapidapi.com',
+        'x-rapidapi-host': 'instagram-api-fast-reliable-data-scraper.p.rapidapi.com',
       },
     });
 
@@ -124,19 +144,19 @@ export default async function handler(req: Request): Promise<Response> {
       }
     }
 
-    nextCursor = data.pagination_token || data.data?.pagination_token || data.next_page || data.data?.next_page || data.end_cursor || data.data?.end_cursor || data.next_min_id || data.data?.next_min_id || null;
-    
-    const hasMoreFromApi = data.has_next_page !== false && data.data?.has_next_page !== false;
-    if (!hasMoreFromApi && !nextCursor) {
-      nextCursor = null;
+    let parsedNextCursor = null;
+    if (data.next_min_id) {
+      parsedNextCursor = typeof data.next_min_id === 'object' ? JSON.stringify(data.next_min_id) : String(data.next_min_id);
+    } else if (data.data?.next_min_id) {
+      parsedNextCursor = typeof data.data.next_min_id === 'object' ? JSON.stringify(data.data.next_min_id) : String(data.data.next_min_id);
     }
 
     return new Response(
       JSON.stringify({
         success: true,
         total: allComments.length,
-        hasMore: nextCursor !== null, // Pode haver mais no instagram
-        nextCursor: nextCursor,
+        hasMore: parsedNextCursor !== null,
+        nextCursor: parsedNextCursor,
         comments: allComments,
       }),
       { status: 200, headers }
