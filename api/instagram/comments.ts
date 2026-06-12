@@ -65,7 +65,7 @@ export default async function handler(req: Request): Promise<Response> {
   const postUrl = url.searchParams.get('url');
   const maxComments = Math.min(
     parseInt(url.searchParams.get('max_comments') || '500'),
-    2000
+    5000
   );
 
   if (!postUrl) {

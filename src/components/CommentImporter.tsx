@@ -263,7 +263,7 @@ const CommentImporter: React.FC<CommentImporterProps> = ({ onParticipantsChange,
               <p className="text-[10px] text-white/30">Mais comentários = mais tempo</p>
             </div>
             <div className="flex gap-2">
-              {[100, 500, 1000, 2000].map((n) => (
+              {[100, 500, 1000, 2000, 3000, 5000].map((n) => (
                 <button
                   key={n}
                   onClick={() => setMaxComments(n)}
