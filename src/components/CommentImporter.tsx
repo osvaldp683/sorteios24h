@@ -69,8 +69,8 @@ const CommentImporter: React.FC<CommentImporterProps> = ({ onParticipantsChange,
             const messages = [
               'Buscando comentários...',
               'Carregando participantes...',
-              'Isso pode levar alguns segundos...',
-              'Processando dados...',
+              'Lendo as páginas do Instagram...',
+              'Evitando bloqueios do Instagram...',
             ];
             return {
               loaded: Math.min(prev.loaded + increment, 80),
@@ -79,11 +79,12 @@ const CommentImporter: React.FC<CommentImporterProps> = ({ onParticipantsChange,
           }
           return prev;
         });
-      }, 400);
+      }, 800);
 
       let allFetchedComments: { username: string; text: string; id: string }[] = [];
       let currentCursor: string | null = null;
       let hasMore = true;
+      let retries = 0;
 
       while (hasMore && allFetchedComments.length < maxComments) {
         let apiUrl = `/api/instagram/comments?url=${encodeURIComponent(instagramUrl.trim())}&max_comments=${maxComments}`;
@@ -92,6 +93,23 @@ const CommentImporter: React.FC<CommentImporterProps> = ({ onParticipantsChange,
         }
 
         const res = await fetch(apiUrl, { signal: abortRef.current.signal });
+        
+        if (res.status === 429) {
+          // Rate limit atingido. Vamos esperar 5 segundos e tentar novamente.
+          if (retries < 5) {
+            retries++;
+            setFetchProgress((prev) => ({
+              ...prev,
+              message: `Pausa de segurança (Instagram)... Retomando em instantes.`
+            }));
+            await new Promise((r) => setTimeout(r, 5000));
+            continue; // Tenta fazer a requisição de novo com o mesmo cursor
+          } else {
+            // Se tentou muitas vezes e continuou bloqueado, para por aqui
+            break;
+          }
+        }
+
         const data = await res.json();
 
         if (!res.ok) {
@@ -104,11 +122,12 @@ const CommentImporter: React.FC<CommentImporterProps> = ({ onParticipantsChange,
             });
             return;
           } else {
-            // Se já temos algo, ignora o erro e continua com os que pegamos
+            // Se já temos algo, ignora o erro (que não seja 429) e continua com os que pegamos
             break;
           }
         }
 
+        retries = 0; // reseta os retries em caso de sucesso
         allFetchedComments = [...allFetchedComments, ...data.comments];
         currentCursor = data.nextCursor;
         hasMore = data.hasMore;
@@ -123,7 +142,9 @@ const CommentImporter: React.FC<CommentImporterProps> = ({ onParticipantsChange,
         }));
 
         if (!hasMore || allFetchedComments.length >= maxComments) break;
-        await new Promise((r) => setTimeout(r, 200));
+        
+        // Aumentando o delay entre páginas para não levar rate limit tão rápido
+        await new Promise((r) => setTimeout(r, 1500));
       }
 
       clearInterval(progressTimer);
