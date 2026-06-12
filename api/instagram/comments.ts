@@ -8,29 +8,6 @@ export const config = {
   runtime: 'edge',
 };
 
-interface RapidAPIComment {
-  id?: string;
-  pk?: string;
-  user?: {
-    username?: string;
-    pk?: string;
-  };
-  text?: string;
-  timestamp?: number;
-  like_count?: number;
-}
-
-interface RapidAPIResponse {
-  data?: {
-    items?: RapidAPIComment[];
-    next_page?: string | null;
-    next_min_id?: string | null;
-    count?: number;
-  };
-  status?: string;
-  message?: string;
-}
-
 export default async function handler(req: Request): Promise<Response> {
   const headers = {
     'Content-Type': 'application/json',
@@ -55,7 +32,7 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(
       JSON.stringify({
         error: 'RAPIDAPI_KEY não configurada',
-        hint: 'Configure a variável de ambiente RAPIDAPI_KEY no Vercel com sua chave do RapidAPI (instagram-scraper21)',
+        hint: 'Configure a variável de ambiente RAPIDAPI_KEY no Vercel com sua chave do RapidAPI',
       }),
       { status: 503, headers }
     );
@@ -84,38 +61,39 @@ export default async function handler(req: Request): Promise<Response> {
     );
   }
 
-  const codeOrUrl = encodeURIComponent(postUrl.split('?')[0].replace(/\/$/, ''));
+  const shortcode = shortcodeMatch[2];
 
   try {
     const allComments: { username: string; text: string; id: string }[] = [];
-    let nextMinId: string | null = null;
+    let nextCursor: string | null = null;
     let page = 0;
     const MAX_PAGES = Math.ceil(maxComments / 12); // ~12 comments per page
 
     do {
-      const apiUrl = new URL('https://instagram-scraper21.p.rapidapi.com/api/v1/post/comments');
-      apiUrl.searchParams.set('code_or_id_or_url', decodeURIComponent(codeOrUrl));
-      if (nextMinId) {
-        apiUrl.searchParams.set('min_id', nextMinId);
+      const apiUrl = new URL('https://instagram-scraper-stable-api.p.rapidapi.com/get_post_comments.php');
+      apiUrl.searchParams.set('media_code', shortcode);
+      apiUrl.searchParams.set('sort_order', 'recent');
+      if (nextCursor) {
+        apiUrl.searchParams.set('pagination_token', nextCursor);
       }
 
       const response = await fetch(apiUrl.toString(), {
         method: 'GET',
         headers: {
+          'Content-Type': 'application/json',
           'x-rapidapi-key': apiKey,
-          'x-rapidapi-host': 'instagram-scraper21.p.rapidapi.com',
+          'x-rapidapi-host': 'instagram-scraper-stable-api.p.rapidapi.com',
         },
       });
 
       if (!response.ok) {
         const errText = await response.text();
-        // Se a primeira página falhar, retorna erro
         if (page === 0) {
           if (response.status === 403 || response.status === 401) {
             return new Response(
               JSON.stringify({
                 error: 'Chave da API inválida ou sem permissão',
-                hint: 'Verifique sua RAPIDAPI_KEY e se está inscrito na API instagram-scraper21',
+                hint: 'Verifique sua RAPIDAPI_KEY.',
               }),
               { status: 403, headers }
             );
@@ -124,7 +102,7 @@ export default async function handler(req: Request): Promise<Response> {
             return new Response(
               JSON.stringify({
                 error: 'Limite de requisições atingido',
-                hint: 'Aguarde alguns segundos e tente novamente, ou atualize seu plano no RapidAPI',
+                hint: 'Aguarde alguns segundos e tente novamente.',
               }),
               { status: 429, headers }
             );
@@ -134,20 +112,22 @@ export default async function handler(req: Request): Promise<Response> {
             { status: 502, headers }
           );
         }
-        // Se páginas subsequentes falharem, retorna o que temos
+        break; // Ignora erros em páginas subsequentes e retorna o que já temos
+      }
+
+      const data: any = await response.json();
+
+      // Dependendo da estrutura da resposta, pegamos os itens
+      const items = data.data?.items || data.items || data.comments || data.data?.comments || data.data || [];
+
+      if (!items || items.length === 0) {
         break;
       }
 
-      const data: RapidAPIResponse = await response.json();
-
-      if (!data.data?.items) {
-        break;
-      }
-
-      for (const item of data.data.items) {
+      for (const item of items) {
         if (allComments.length >= maxComments) break;
-        const username = item.user?.username;
-        const text = item.text;
+        const username = item.user?.username || item.owner?.username || item.username;
+        const text = item.text || item.comment_text;
         if (username && text) {
           allComments.push({
             id: item.id || item.pk || `${username}_${allComments.length}`,
@@ -157,20 +137,27 @@ export default async function handler(req: Request): Promise<Response> {
         }
       }
 
-      nextMinId = data.data.next_min_id || data.data.next_page || null;
+      // Procura pelo token de paginação na resposta (vários formatos suportados)
+      nextCursor = data.pagination_token || data.data?.pagination_token || data.next_page || data.data?.next_page || data.end_cursor || data.data?.end_cursor || data.next_min_id || data.data?.next_min_id || null;
+      
+      // Alguns payloads usam 'has_more' ou algo similar
+      const hasMore = data.has_next_page !== false && data.data?.has_next_page !== false;
+      if (!hasMore && !nextCursor) {
+        nextCursor = null;
+      }
+
       page++;
 
-      // Pequeno delay para não sobrecarregar a API
-      if (nextMinId && allComments.length < maxComments) {
-        await new Promise((r) => setTimeout(r, 200));
+      if (nextCursor && allComments.length < maxComments) {
+        await new Promise((r) => setTimeout(r, 300));
       }
-    } while (nextMinId && allComments.length < maxComments && page < MAX_PAGES);
+    } while (nextCursor && allComments.length < maxComments && page < MAX_PAGES);
 
     return new Response(
       JSON.stringify({
         success: true,
         total: allComments.length,
-        hasMore: nextMinId !== null && allComments.length >= maxComments,
+        hasMore: nextCursor !== null && allComments.length >= maxComments,
         comments: allComments,
       }),
       { status: 200, headers }
