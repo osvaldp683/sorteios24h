@@ -93,7 +93,7 @@ export default async function handler(req: Request): Promise<Response> {
     const MAX_PAGES = Math.ceil(maxComments / 12); // ~12 comments per page
 
     do {
-      const apiUrl = new URL('https://instagram-scraper21.p.rapidapi.com/v1/comments');
+      const apiUrl = new URL('https://instagram-scraper21.p.rapidapi.com/api/v1/post/comments');
       apiUrl.searchParams.set('code_or_id_or_url', decodeURIComponent(codeOrUrl));
       if (nextMinId) {
         apiUrl.searchParams.set('min_id', nextMinId);
