@@ -69,8 +69,8 @@ const CommentImporter: React.FC<CommentImporterProps> = ({ onParticipantsChange,
             const messages = [
               'Buscando comentários...',
               'Carregando participantes...',
+              'Isso pode levar alguns segundos...',
               'Processando dados...',
-              'Quase pronto...',
             ];
             return {
               loaded: Math.min(prev.loaded + increment, 80),
@@ -81,25 +81,56 @@ const CommentImporter: React.FC<CommentImporterProps> = ({ onParticipantsChange,
         });
       }, 400);
 
-      const apiUrl = `/api/instagram/comments?url=${encodeURIComponent(instagramUrl.trim())}&max_comments=${maxComments}`;
-      const res = await fetch(apiUrl, { signal: abortRef.current.signal });
-      clearInterval(progressTimer);
+      let allFetchedComments: { username: string; text: string; id: string }[] = [];
+      let currentCursor: string | null = null;
+      let hasMore = true;
 
-      const data = await res.json();
+      while (hasMore && allFetchedComments.length < maxComments) {
+        let apiUrl = `/api/instagram/comments?url=${encodeURIComponent(instagramUrl.trim())}&max_comments=${maxComments}`;
+        if (currentCursor) {
+          apiUrl += `&cursor=${encodeURIComponent(currentCursor)}`;
+        }
 
-      if (!res.ok) {
-        setFetchStatus(res.status === 503 ? 'api_not_configured' : 'error');
-        setApiError({
-          message: data.error || 'Erro ao importar comentários',
-          hint: data.hint,
-        });
-        return;
+        const res = await fetch(apiUrl, { signal: abortRef.current.signal });
+        const data = await res.json();
+
+        if (!res.ok) {
+          if (allFetchedComments.length === 0) {
+            clearInterval(progressTimer);
+            setFetchStatus(res.status === 503 ? 'api_not_configured' : 'error');
+            setApiError({
+              message: data.error || 'Erro ao importar comentários',
+              hint: data.hint,
+            });
+            return;
+          } else {
+            // Se já temos algo, ignora o erro e continua com os que pegamos
+            break;
+          }
+        }
+
+        allFetchedComments = [...allFetchedComments, ...data.comments];
+        currentCursor = data.nextCursor;
+        hasMore = data.hasMore;
+
+        if (allFetchedComments.length > maxComments) {
+          allFetchedComments = allFetchedComments.slice(0, maxComments);
+        }
+
+        setFetchProgress((prev) => ({
+          ...prev,
+          message: `Carregados ${allFetchedComments.length} comentários...`
+        }));
+
+        if (!hasMore || allFetchedComments.length >= maxComments) break;
+        await new Promise((r) => setTimeout(r, 200));
       }
 
-      setFetchProgress({ loaded: 100, message: `${data.total} comentários carregados!` });
+      clearInterval(progressTimer);
+      setFetchProgress({ loaded: 100, message: `${allFetchedComments.length} comentários carregados!` });
 
       // Converte os comentários para Participant[]
-      const newParticipants: Participant[] = data.comments.map(
+      const newParticipants: Participant[] = allFetchedComments.map(
         (c: { id: string; username: string; text: string }) => ({
           id: generateId(),
           username: c.username.toLowerCase(),
@@ -111,7 +142,7 @@ const CommentImporter: React.FC<CommentImporterProps> = ({ onParticipantsChange,
       applyParticipants(newParticipants, instagramUrl.trim());
 
       // Preenche o textarea para referência
-      const rawText = data.comments
+      const rawText = allFetchedComments
         .map((c: { username: string; text: string }) => `@${c.username}: ${c.text}`)
         .join('\n');
       setRawComments(rawText);
